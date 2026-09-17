@@ -50,14 +50,15 @@ def generate_config():
                 "settings": {"clients": [{"password": password}]},
                 "streamSettings": {"network": "ws", "wsSettings": {"path": f"{ws_path}-trojan"}}
             },
-            # 4. Shadowsocks (اصلاح شده برای WS)
+            # 4. Shadowsocks (تنظیم دقیق برای WS)
             {
                 "port": 10083,
                 "listen": "127.0.0.1",
                 "protocol": "shadowsocks",
                 "settings": {
                     "method": "aes-128-gcm",
-                    "password": password
+                    "password": password,
+                    "network": "tcp"
                 },
                 "streamSettings": {
                     "network": "ws",
@@ -95,10 +96,10 @@ async def handle_panel(request):
     encoded_trojan_path = urllib.parse.quote(f"{ws_path}-trojan", safe='')
     trojan_link = f"trojan://{password}@{domain}:443?path={encoded_trojan_path}&security=tls&alpn=h2&host={domain}&fp=chrome&type=ws&sni={domain}#Railway-Trojan"
 
-    # 4. Shadowsocks + WS + TLS (اصلاح شده با پارامترهای دقیق v2ray-plugin)
+    # 4. Shadowsocks (فرمت مدرن SIP002 بدون نیاز به v2ray-plugin)
     user_info = base64.b64encode(f"aes-128-gcm:{password}".encode()).decode()
-    plugin_opts = urllib.parse.quote(f"type=ws;host={domain};path={ws_path}-ss;tls;sni={domain}")
-    ss_link = f"ss://{user_info}@{domain}:443?plugin=v2ray-plugin%3B{plugin_opts}#Railway-Shadowsocks"
+    encoded_ss_path = urllib.parse.quote(f"{ws_path}-ss", safe='')
+    ss_link = f"ss://{user_info}@{domain}:443?type=ws&path={encoded_ss_path}&security=tls&host={domain}&sni={domain}#Railway-Shadowsocks"
 
     html = f"""
     <!DOCTYPE html>
