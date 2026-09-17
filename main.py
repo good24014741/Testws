@@ -17,13 +17,11 @@ def setup_xray():
             zip_ref.extractall(".")
         os.chmod("xray", 0o755)
 
-# --- ۲. ساخت کانفیگ همزمان برای ۴ پروتکل در Xray ---
+# --- ۲. ساخت کانفیگ Xray ---
 def generate_config():
     uuid = os.environ.get("UUID", "a3b8e7c1-2d4f-4a9b-8c3e-1f2e3d4c5b6a")
     ws_path = os.environ.get("WS_PATH", "/dragon")
     password = os.environ.get("PASSWORD", "dragonpass123")
-    # کلید ۱۶ بایتی Base64 استاندارد برای Shadowsocks 2022
-    ss_key = os.environ.get("SS_KEY", "uO1/q1R2O4L5e6P7r8S9t0==")
     
     config = {
         "log": {"loglevel": "warning"},
@@ -52,14 +50,14 @@ def generate_config():
                 "settings": {"clients": [{"password": password}]},
                 "streamSettings": {"network": "ws", "wsSettings": {"path": f"{ws_path}-trojan"}}
             },
-            # 4. Shadowsocks
+            # 4. Shadowsocks (روش کلاسیک و کاملاً سازگار)
             {
                 "port": 10083,
                 "listen": "127.0.0.1",
                 "protocol": "shadowsocks",
                 "settings": {
-                    "method": "2022-blake3-aes-128-gcm",
-                    "password": ss_key,
+                    "method": "aes-128-gcm",
+                    "password": password,
                     "network": "tcp,udp"
                 },
                 "streamSettings": {"network": "ws", "wsSettings": {"path": f"{ws_path}-ss"}}
@@ -71,20 +69,19 @@ def generate_config():
     with open("config.json", "w") as f:
         json.dump(config, f)
 
-# --- ۳. ساخت پنل وب با تمام لینک‌ها ---
+# --- ۳. ساخت صفحه پنل ---
 async def handle_panel(request):
     domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", request.host)
     uuid = os.environ.get("UUID", "a3b8e7c1-2d4f-4a9b-8c3e-1f2e3d4c5b6a")
     ws_path = os.environ.get("WS_PATH", "/dragon")
     password = os.environ.get("PASSWORD", "dragonpass123")
-    ss_key = os.environ.get("SS_KEY", "uO1/q1R2O4L5e6P7r8S9t0==")
     
     encoded_path = urllib.parse.quote(ws_path, safe='')
     
-    # ۱. لینک VLESS با فرمت کامل دقیق
+    # 1. VLESS
     vless_link = f"vless://{uuid}@{domain}:443?path={encoded_path}&security=tls&alpn=h2&encryption=none&insecure=0&host={domain}&fp=chrome&type=ws&allowInsecure=0&sni={domain}#Railway-VLESS"
     
-    # ۲. لینک VMess
+    # 2. VMess
     vmess_dict = {
         "v": "2", "ps": "Railway-VMess", "add": domain, "port": "443",
         "id": uuid, "aid": "0", "scy": "auto", "net": "ws",
@@ -92,13 +89,13 @@ async def handle_panel(request):
     }
     vmess_link = "vmess://" + base64.b64encode(json.dumps(vmess_dict).encode()).decode()
 
-    # ۳. لینک Trojan
+    # 3. Trojan
     encoded_trojan_path = urllib.parse.quote(f"{ws_path}-trojan", safe='')
     trojan_link = f"trojan://{password}@{domain}:443?path={encoded_trojan_path}&security=tls&alpn=h2&host={domain}&fp=chrome&type=ws&sni={domain}#Railway-Trojan"
 
-    # ۴. لینک Shadowsocks + WS + TLS
+    # 4. Shadowsocks (لینک استاندارد و تست‌شده)
     encoded_ss_path = urllib.parse.quote(f"{ws_path}-ss", safe='')
-    user_info = base64.b64encode(f"2022-blake3-aes-128-gcm:{ss_key}".encode()).decode()
+    user_info = base64.b64encode(f"aes-128-gcm:{password}".encode()).decode()
     ss_link = f"ss://{user_info}@{domain}:443?type=ws&path={encoded_ss_path}&security=tls&host={domain}&sni={domain}#Railway-Shadowsocks"
 
     html = f"""
@@ -140,7 +137,7 @@ async def handle_panel(request):
     """
     return web.Response(text=html, content_type='text/html')
 
-# --- ۴. هدایت اتصالات WS به پورت مرتبط در Xray ---
+# --- ۴. هدایت اتصالات WS ---
 async def handle_ws(request):
     ws_path = os.environ.get("WS_PATH", "/dragon")
     path = request.path
@@ -193,7 +190,6 @@ if __name__ == "__main__":
     app = web.Application()
     app.router.add_get('/', handle_panel)
     
-    # ثبت مسیر تمامی پروتکل‌ها
     app.router.add_get(ws_path, handle_ws)
     app.router.add_get(f"{ws_path}-vmess", handle_ws)
     app.router.add_get(f"{ws_path}-trojan", handle_ws)
